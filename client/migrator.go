@@ -15,10 +15,14 @@ import (
 )
 
 type Migrator struct {
-	migrations []string
+	migrations []Migration
 
 	config *Config
 	db     *mgo.Database
+}
+type Migration struct {
+	Name string
+	Path string
 }
 
 type MigrationHistory struct {
@@ -69,7 +73,10 @@ func (m *Migrator) loadNewMigrations() {
 			}
 		}
 		if allow {
-			m.migrations = append(m.migrations, file)
+			m.migrations = append(m.migrations, Migration{
+				Name: name,
+				Path: file,
+			})
 		}
 	}
 }
@@ -78,26 +85,26 @@ func (m *Migrator) Apply() error {
 	for _, migration := range m.migrations {
 		var data interface{}
 
-		content, err := ioutil.ReadFile(migration)
+		content, err := ioutil.ReadFile(migration.Path)
 		if err != nil {
-			return migrationFailed(migration, err)
+			return migrationFailed(migration.Name, err)
 		}
 
 		err = json.Unmarshal(content, &data)
 		if err != nil {
-			return migrationFailed(migration, err)
+			return migrationFailed(migration.Name, err)
 		}
 
-		err = m.ProcessCommand(data)
+		err = m.ProcessCommand(data, migration.Name)
 		if err != nil {
-			return migrationFailed(migration, err)
+			return migrationFailed(migration.Name, err)
 		}
 	}
 
 	return nil
 }
 
-func (m *Migrator) ProcessCommand(data interface{}) error {
+func (m *Migrator) ProcessCommand(data interface{}, name string) error {
 	commands, ok := data.([]interface{})
 	if !ok {
 		command, ok := data.(map[string]interface{})
@@ -124,6 +131,18 @@ func (m *Migrator) ProcessCommand(data interface{}) error {
 		}
 	}
 
+	collection := m.db.C(m.config.TableName)
+	err := collection.Insert(MigrationHistory{
+		ID:        bson.NewObjectId(),
+		Name:      name,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		modules.Log.Error(fmt.Sprintf("Error during insert of mongo document: %s", err.Error()))
+	}
+
+	/* save executed file to migration history in mongo */
+	modules.Log.Info(fmt.Sprintf("Migration \"%s\" has been applied", name))
 
 	return nil
 }

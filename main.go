@@ -5,30 +5,34 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"github.com/docopt/docopt.go"
 	"github.com/kLkA/go-migrate-tool/modules"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
-	"time"
-	"bufio"
 	"strings"
+	"time"
 )
 
 const (
-	version           = "0.1.0-beta"
-	defaultTimeFormat = "060102_150405"
+	version              = "0.1.0-beta"
+	defaultTimeFormat    = "060102_150405"
+	defaultMigrationPath = "migrations"
 )
-
-
 
 func main() {
 
 	arguments := getCmdArguments()
 
 	if arguments["--new"] != nil {
-		err := createMigration(arguments["--new"].(string))
+		path := defaultMigrationPath
+		if arguments["--path"] != nil {
+			path = arguments["--path"].(string)
+		}
+
+		err := createMigration(arguments["--new"].(string), path)
 		if err != nil {
 			modules.Log.Error(err)
 		}
@@ -46,6 +50,7 @@ func getCmdArguments() map[string]interface{} {
 	Options:
 		-h --help         Show this screen
 		--new=name        Create migration
+		--path=filepath   Path to migration folder
 	`
 	/*
 		--up=limit        Apply migrations
@@ -59,25 +64,23 @@ func getCmdArguments() map[string]interface{} {
 	return arguments
 }
 
-func createMigration(name string) error {
+func createMigration(name string, filepath string) error {
 	filename := "m" + time.Now().Format(defaultTimeFormat) + "_" + name + ".json"
-	folder := "migrations"
 
-	dir, _ :=  os.Getwd()
-	path := dir + "/migrations/" + filename
-
+	dir, _ := os.Getwd()
+	path := dir + "/" + filepath + "/" + filename
 
 	if !askForConfirmation(fmt.Sprintf("Create new migration \"%s\"", path)) {
 		return errors.New("confirmation failed")
 	}
 
-	os.Mkdir(folder, 0755)
+	os.Mkdir(filepath, 0755)
 
-	if _, err := os.Stat(folder + "/" + filename); err == nil {
+	if _, err := os.Stat(filepath + "/" + filename); err == nil {
 		return errors.New(fmt.Sprintf("file %s already exists", filename))
 	}
 
-	ioutil.WriteFile(folder+"/"+filename, []byte("[]"), 0744)
+	ioutil.WriteFile(filepath+"/"+filename, []byte("[]"), 0744)
 	return nil
 }
 
