@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/kLkA/go-migrate-tool/modules"
+	"github.com/AirGateway/go-migrate-tool/modules"
 	"gopkg.in/mgo.v2"
 	"gopkg.in/mgo.v2/bson"
 	"io/ioutil"
@@ -38,7 +38,7 @@ func New(conn *mgo.Session, config *Config) (*Migrator, error) {
 	}
 
 	i := &Migrator{
-		db:     conn.DB(config.DatabaseName),
+		db:     conn.DB("admin"),
 		config: config,
 	}
 	i.loadNewMigrations()
@@ -81,27 +81,30 @@ func (m *Migrator) loadNewMigrations() {
 	}
 }
 
-func (m *Migrator) Apply() error {
+func (m *Migrator) Apply() (int, error) {
+	counter := 0
 	for _, migration := range m.migrations {
 		var data interface{}
 
 		content, err := ioutil.ReadFile(migration.Path)
 		if err != nil {
-			return migrationFailed(migration.Name, err)
+			return counter, migrationFailed(migration.Name, err)
 		}
 
 		err = json.Unmarshal(content, &data)
 		if err != nil {
-			return migrationFailed(migration.Name, err)
+			return counter, migrationFailed(migration.Name, err)
 		}
 
 		err = m.ProcessCommand(data, migration.Name)
 		if err != nil {
-			return migrationFailed(migration.Name, err)
+			return counter, migrationFailed(migration.Name, err)
 		}
+
+		counter++
 	}
 
-	return nil
+	return counter, nil
 }
 
 func (m *Migrator) ProcessCommand(data interface{}, name string) error {
@@ -117,6 +120,11 @@ func (m *Migrator) ProcessCommand(data interface{}, name string) error {
 	for _, command := range commands {
 		var cmd bson.D
 		for key, value := range command.(map[string]interface{}) {
+			stringValue, ok := value.(string)
+			if ok {
+				value = strings.Replace(stringValue, "$db", m.config.DatabaseName, -1)
+			}
+
 			if strings.Contains(key, "cmd:") {
 				key = key[4:]
 				cmd = append([]bson.DocElem{{Name: key, Value: value}}, cmd...)

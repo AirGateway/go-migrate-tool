@@ -8,7 +8,7 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/docopt/docopt.go"
-	"github.com/kLkA/go-migrate-tool/modules"
+	"github.com/AirGateway/go-migrate-tool/modules"
 	"github.com/pkg/errors"
 	"io/ioutil"
 	"os"
