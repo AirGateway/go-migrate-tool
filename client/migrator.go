@@ -17,8 +17,10 @@ import (
 type Migrator struct {
 	migrations []Migration
 
-	config *Config
-	db     *mgo.Database
+	config         *Config
+	conn           *mgo.Session
+	adminDatabase  *mgo.Database
+	clientDatabase *mgo.Database
 }
 type Migration struct {
 	Name string
@@ -38,8 +40,10 @@ func New(conn *mgo.Session, config *Config) (*Migrator, error) {
 	}
 
 	i := &Migrator{
-		db:     conn.DB("admin"),
-		config: config,
+		conn:           conn,
+		config:         config,
+		clientDatabase: conn.DB(config.DatabaseName),
+		adminDatabase:  conn.DB("admin"),
 	}
 	i.loadNewMigrations()
 
@@ -47,7 +51,7 @@ func New(conn *mgo.Session, config *Config) (*Migrator, error) {
 }
 
 func (m *Migrator) loadNewMigrations() {
-	collection := m.db.C(m.config.TableName)
+	collection := m.clientDatabase.C(m.config.TableName)
 
 	gopath := os.Getenv("GOPATH")
 	migrationFiles, err := filepath.Glob(strings.Replace(m.config.MigrationPath, "$GOPATH", gopath, 1) + "/*.json")
@@ -133,13 +137,13 @@ func (m *Migrator) ProcessCommand(data interface{}, name string) error {
 			}
 		}
 
-		err := m.db.Run(cmd, nil)
+		err := m.adminDatabase.Run(cmd, nil)
 		if err != nil {
 			return err
 		}
 	}
 
-	collection := m.db.C(m.config.TableName)
+	collection := m.clientDatabase.C(m.config.TableName)
 	err := collection.Insert(MigrationHistory{
 		ID:        bson.NewObjectId(),
 		Name:      name,
